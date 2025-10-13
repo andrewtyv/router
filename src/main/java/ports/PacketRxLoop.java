@@ -42,7 +42,7 @@ public class PacketRxLoop {
                 // якщо драйвер раптом не повернув EthernetPacket
                 try {
                     Packet top = pkt.get(EthernetPacket.class);
-                    if (top != null) handler.onPacket((EthernetPacket) top, ifName);
+                    if (top != null) handler.#Packet((EthernetPacket) top, ifName);
                 } catch (Exception ignored) {}
             }
         };

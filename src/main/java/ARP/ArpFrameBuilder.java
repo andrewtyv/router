@@ -23,8 +23,6 @@ public class ArpFrameBuilder {
             throw new IllegalArgumentException("Invalid IPv4: " + ip, e);
         }
     }
-
-    /** who-has targetIp? tell srcIp */
     public static EthernetPacket buildRequest(MacAddress srcMac, IpAddres srcIp, IpAddres targetIp) {
         ArpPacket.Builder arp = new ArpPacket.Builder()
                 .hardwareType(ArpHardwareType.ETHERNET)
@@ -47,7 +45,6 @@ public class ArpFrameBuilder {
         return eth.build();
     }
 
-    /** is-at srcIp (unicast reply to dstMac/dstIp) */
     public static EthernetPacket buildReply(MacAddress srcMac, IpAddres srcIp,
                                             MacAddress dstMac, IpAddres dstIp) {
         ArpPacket.Builder arp = new ArpPacket.Builder()
