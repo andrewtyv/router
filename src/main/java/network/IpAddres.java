@@ -45,8 +45,16 @@ public class IpAddres implements Comparable<IpAddres> {
 
 
     @Override
-    public int hashCode() { return Integer.hashCode(toInt()); }
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof IpAddres other)) return false;
+        return Objects.equals(this.getIp(), other.getIp());
+    }
 
+    @Override
+    public int hashCode() {
+        return Objects.hash(getIp());
+    }
     /* -------------------- Конвертації -------------------- */
 
     /** У масив байтів (big-endian): [A, B, C, D]. */

@@ -47,7 +47,7 @@ public class InterfaceController {
         RouterInterfaces.Add_Interface(ni);
 
         // 2) вибрати NIC
-        String nic = null; // ДОДАЙ це поле в NewInterfaceDTO (опційно)
+        String nic = req.nic; // ДОДАЙ це поле в NewInterfaceDTO (опційно)
         if (nic == null || nic.isBlank()) {
             // авто-вибір: перший активний enN, N>6
             Set<String> active = watcher.snapshotActiveIfaces(); // вже відфільтровані enN>6 у твоїй реалізації
@@ -82,11 +82,23 @@ public class InterfaceController {
 
         String responce= new String("");
         for (String item : items) {
-            responce+=item + "\n";
+            responce+=item + '\n';
         }
 
         return ResponseEntity.ok(new ApiResponseWrapper<>("ok", responce));
     }
+    @DeleteMapping("/{name}")
+    public ResponseEntity<?> deleteInterface(@PathVariable String name) {
+        try {
+            rx.stop(name);
+            ifbm.unbind(name);
+            RouterInterfaces.remove(name); // твій сторедж логічних інтерфейсів
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
 
 
 }

@@ -4,6 +4,7 @@ import org.pcap4j.core.*;
 import org.pcap4j.util.MacAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,7 +24,6 @@ public class IfBindingManager {
     /** snaplen, mode і timeout можна винести в конфіг за бажанням */
     private static final int SNAPLEN = 65536;
     private static final int TIMEOUT_MS = 10;
-
     private final LinkStatusWatcher watcher;
 
     /** runtime прив'язки: ifName -> Binding */
@@ -53,13 +53,15 @@ public class IfBindingManager {
 
     /** Дозволяємо тільки enN, де N > 6 */
     private static boolean isAllowedEn(String nicName) {
-        if (nicName == null || !nicName.startsWith("en")) return false;
+        /*if (nicName == null || !nicName.startsWith("en")) return false;
         try {
             int n = Integer.parseInt(nicName.substring(2));
-            return n > 6;
+            return n > 0;
         } catch (NumberFormatException e) {
             return false;
         }
+        */
+        return true; 
     }
 
     /**

@@ -17,7 +17,7 @@ public class LinkStatusWatcher {
 
     private static final Logger log = LoggerFactory.getLogger(LinkStatusWatcher.class);
 
-    // як часто опитувати (зроби 1000–2000 мс; 200–500 мс теж ок, але навантаження вище)
+    // як часто опитувати (зробити 1000–2000 мс; 200–500 мс теж ок, але навантаження вище)
     private static final long PERIOD_MS = 1000;
 
     private final ScheduledExecutorService ses = Executors.newSingleThreadScheduledExecutor();
@@ -141,12 +141,16 @@ public class LinkStatusWatcher {
     }
 
     private static boolean isEnGreaterThan6(String name) {
-        if (!name.startsWith("en")) return false;
+        /*if (!name.startsWith("en")) return false;
         try {
             int num = Integer.parseInt(name.substring(2));
             return num > 6;
         } catch (NumberFormatException e) {
             return false;
         }
+        */
+         return true;
     }
+
+
 }

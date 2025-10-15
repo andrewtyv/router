@@ -11,6 +11,8 @@ import ports.TxSender;
 import java.net.Inet4Address;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import network.IpAddres;
+
 
 public class ArpEngine {
 
@@ -28,18 +30,53 @@ public class ArpEngine {
 
     /** Викликається з PacketRxLoop для кожного Ethernet кадру. */
     public void onEthernetFrame(EthernetPacket eth, String ifName) {
-        if (eth.getHeader().getType() != EtherType.ARP) return;
-        if (!(eth.getPayload() instanceof ArpPacket arp)) return;
+        System.out.println("etype=" + eth.getHeader().getType());
+        if (eth.getHeader().getType() != EtherType.ARP) {
+            System.out.println("here1");
+
+            return;
+            }
+        if (!(eth.getPayload() instanceof ArpPacket arp)) {
+            System.out.println("here2");
+               return;
+
+        }
 
         ArpPacket.ArpHeader h = arp.getHeader();
         IpAddres spa = new IpAddres((h.getSrcProtocolAddr().getHostAddress()));
         MacAddress sha    = h.getSrcHardwareAddr();
         Inet4Address tpa = (Inet4Address) h.getDstProtocolAddr();
 
+        MacAddress selfMac = ifBook.getMac(ifName);
+        IpAddres   selfIp  = ifBook.getIp(ifName);
+        if (sha != null && sha.equals(selfMac)) {
+            return;
+        }
+
+        if (spa.equals(selfIp)) {
+                return;
+        }
+
+        boolean weWaitForSpa = cache.get(spa)
+                .map(e -> e.state == ArpCache.State.INCOMPLETE)
+                .orElse(false);
+
+        boolean askedUs = h.getOperation().equals(ArpOperation.REQUEST) && isLocalTarget(ifName, tpa);
+
+        if (weWaitForSpa || askedUs) {
+            // Запам'ятати хто нам написав (лише у дозволених кейсах)
+            cache.learned(spa, sha);
+            // Пінгнути scheduler: якщо чекали — завершить future
+            scheduler.onLearned(ifName, spa, sha);
+        }
+
+/*
         // 1) Запам'ятати хто нам написав
         cache.learned(spa, sha);
         // Пінгнути scheduler: якщо чекали цю адресу — завершай future
         scheduler.onLearned(ifName, spa, sha);
+
+ */
 
         // 2) Якщо це ARP-REQUEST до нашого локального IP — відповідаємо (без proxy)
         if (h.getOperation().equals(ArpOperation.REQUEST) && isLocalTarget(ifName, tpa)) {
@@ -72,4 +109,5 @@ public class ArpEngine {
         IpAddres local = ifBook.getIp(ifName);
         return local != null && local.equals(ip);
     }
+
 }
