@@ -1,10 +1,12 @@
 package network;
 
+import java.net.Inet4Address;
+import java.net.UnknownHostException;
 import java.util.Objects;
 
 /**
  * IPv4 адреса з валідацією та корисними утилітами.
- * Залишаємо назву IpAddres для сумісності, але рекомендується перейменувати на IpAddress.
+ * Назва лишена для сумісності з існуючим кодом.
  */
 public class IpAddres implements Comparable<IpAddres> {
 
@@ -39,22 +41,25 @@ public class IpAddres implements Comparable<IpAddres> {
         return o1 + "." + o2 + "." + o3 + "." + o4;
     }
 
-    /** Залишено для сумісності зі старим кодом. */
-
     @Override public String toString() { return getIp(); }
-
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof IpAddres other)) return false;
-        return Objects.equals(this.getIp(), other.getIp());
+        return this.toInt() == other.toInt();
+    }
+
+    /** Зручне порівняння з Inet4Address (не перевизначає equals(Object)). */
+    public boolean equalsInet4(Inet4Address a) {
+        return a != null && this.getIp().equals(a.getHostAddress());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(getIp());
+        return Integer.hashCode(toInt());
     }
+
     /* -------------------- Конвертації -------------------- */
 
     /** У масив байтів (big-endian): [A, B, C, D]. */
@@ -78,10 +83,11 @@ public class IpAddres implements Comparable<IpAddres> {
 
     /* -------------------- Класифікація адрес -------------------- */
 
-    public boolean isLoopback() { return o1 == 127; }                          // 127.0.0.0/8
+    public boolean isLoopback()  { return o1 == 127; }                          // 127.0.0.0/8
     public boolean isLinkLocal() { return o1 == 169 && o2 == 254; }            // 169.254.0.0/16
     public boolean isMulticast() { return o1 >= 224 && o1 <= 239; }            // 224.0.0.0/4
     public boolean isBroadcast() { return o1 == 255 && o2 == 255 && o3 == 255 && o4 == 255; }
+    public boolean isUnspecified(){ return o1 == 0 && o2 == 0 && o3 == 0 && o4 == 0; } // 0.0.0.0
 
     /** RFC1918 приватні: 10/8, 172.16/12, 192.168/16. */
     public boolean isPrivate() {
@@ -90,29 +96,91 @@ public class IpAddres implements Comparable<IpAddres> {
         return (o1 == 192 && o2 == 168);                                       // 192.168.0.0/16
     }
 
-    /* -------------------- Підмережі -------------------- */
+    /** Спрощено: унікасний (не loopback/link-local/multicast/broadcast/unspecified). */
+    public boolean isUnicast() {
+        return !isLoopback() && !isLinkLocal() && !isMulticast() && !isBroadcast() && !isUnspecified();
+    }
+
+    /* -------------------- Підмережі / CIDR -------------------- */
 
     /** Чи належить адреса підмережі network/prefix. */
     public boolean inSubnet(IpAddres network, int prefix) {
-        int mask = prefixMask(prefix);
+        int mask = toPrefixMaskInt(prefix);
         return (this.toInt() & mask) == (network.toInt() & mask);
     }
 
     /** Мережева адреса для заданого префікса. */
     public IpAddres networkAddress(int prefix) {
-        int mask = prefixMask(prefix);
+        int mask = toPrefixMaskInt(prefix);
         return IpAddres.fromInt(this.toInt() & mask);
     }
 
     /** Broadcast-адреса для заданого префікса. */
     public IpAddres broadcastAddress(int prefix) {
-        int mask = prefixMask(prefix);
+        int mask = toPrefixMaskInt(prefix);
         return IpAddres.fromInt(this.toInt() | ~mask);
     }
 
-    private static int prefixMask(int prefix) {
+    /** Чи є адреса саме мережевою для prefix. */
+    public boolean isNetworkAddress(int prefix) {
+        return this.equals(this.networkAddress(prefix));
+    }
+
+    /** Чи є адреса directed-broadcast для prefix. */
+    public boolean isDirectedBroadcast(int prefix) {
+        return this.equals(this.broadcastAddress(prefix));
+    }
+
+    /** Чи в одній підмережі з іншою адресою при prefix. */
+    public boolean sameSubnet(IpAddres other, int prefix) {
+        int mask = toPrefixMaskInt(prefix);
+        return (this.toInt() & mask) == (other.toInt() & mask);
+    }
+
+    /** Маска з префікса як IP (напр. /24 -> 255.255.255.0). */
+    public static IpAddres maskFromPrefix(int prefix) {
+        int m = toPrefixMaskInt(prefix);
+        return fromInt(m);
+    }
+
+    /** Префікс із маски (255.255.255.0 -> 24); -1 якщо маска не суцільна. */
+    public static int prefixFromMask(IpAddres mask) {
+        int m = mask.toInt();
+        int ones = Integer.bitCount(m);
+        if (!isContiguousMask(m)) return -1;
+        return ones;
+    }
+
+    /** Перевірка, що маска суцільна 111..1100..00. */
+    public static boolean isContiguousMask(int m) {
+        if (m == 0) return true; // /0
+        int ones = Integer.bitCount(m);
+        int ideal = ones == 32 ? 0xFFFFFFFF : (int)(0xFFFFFFFFL << (32 - ones));
+        return m == ideal;
+    }
+
+    /** Конвертація префікса у int-маску (BIG_ENDIAN). */
+    public static int toPrefixMaskInt(int prefix) {
         if (prefix < 0 || prefix > 32) throw new IllegalArgumentException("prefix 0..32: " + prefix);
         return prefix == 0 ? 0 : (int)(0xFFFFFFFFL << (32 - prefix));
+    }
+
+    /** Парсер "A.B.C.D/len" → Cidr(addr, len). Кидає IllegalArgumentException при помилці. */
+    public static Cidr parseCidr(String s) {
+        if (s == null) throw new IllegalArgumentException("cidr is null");
+        String[] parts = s.trim().split("/");
+        if (parts.length != 2) throw new IllegalArgumentException("Invalid CIDR: " + s);
+        IpAddres ip = new IpAddres(parts[0]);
+        int pfx;
+        try { pfx = Integer.parseInt(parts[1]); }
+        catch (NumberFormatException e){ throw new IllegalArgumentException("Invalid prefix in CIDR: " + s); }
+        if (pfx < 0 || pfx > 32) throw new IllegalArgumentException("prefix 0..32: " + pfx);
+        return new Cidr(ip, pfx);
+    }
+
+    /** Простий валідатор рядка IPv4. */
+    public static boolean isValid(String ip) {
+        try { parseIpv4(ip); return true; } catch (Exception e) { return false; }
     }
 
     /* -------------------- Ґетери/Сетери з валідацією -------------------- */
@@ -158,5 +226,19 @@ public class IpAddres implements Comparable<IpAddres> {
             throw new IllegalArgumentException("IPv4 octet must be 0..255: " + v);
         }
         return v;
+    }
+
+    /* -------------------- Вкладені типи -------------------- */
+
+    /** Результат парсингу CIDR. */
+    public static class Cidr {
+        public final IpAddres address;
+        public final int prefix;
+
+        public Cidr(IpAddres address, int prefix) {
+            this.address = Objects.requireNonNull(address);
+            if (prefix < 0 || prefix > 32) throw new IllegalArgumentException("prefix 0..32: " + prefix);
+            this.prefix = prefix;
+        }
     }
 }

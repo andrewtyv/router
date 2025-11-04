@@ -7,10 +7,11 @@ import network.RouterInterfaces;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import ports.IfBindingManager;
-import ports.PacketRxLoop;
+
+import ports.*;
 import ARP.ArpEngine;
-import ports.LinkStatusWatcher;
+import rib.Rib;
+import rip.RipEngine;   // <<< додали
 
 import java.util.List;
 import java.util.Set;
@@ -22,22 +23,37 @@ public class InterfaceController {
     private final IfBindingManager ifbm;
     private final PacketRxLoop rx;
     private final ArpEngine arp;
+    private final RipEngine rip;           // <<< додали
     private final LinkStatusWatcher watcher;
+    private final Rib rib;
+    private final Forwarder fwd;
 
-    public InterfaceController(IfBindingManager ifbm, PacketRxLoop rx, ArpEngine arp, LinkStatusWatcher watcher) {
+
+    public InterfaceController(
+            IfBindingManager ifbm,
+            PacketRxLoop rx,
+            ArpEngine arp,
+            RipEngine rip,                 // <<< інжектимо RipEngine
+            LinkStatusWatcher watcher,
+            Rib rib,
+            Forwarder fwd
+    ) {
         this.ifbm = ifbm;
         this.rx = rx;
         this.arp = arp;
+        this.rip = rip;                   // <<<
         this.watcher = watcher;
-        // переконайся, що десь у конфігурації ти вже викликаєш watcher.start()
+        this.rib = rib;
+        this.fwd = fwd;
+
     }
 
     @PostMapping("/add_new")
     public ResponseEntity<ApiResponseWrapper<String>> setIp(@RequestBody NewInterfaceDTO req) {
-        // 1) зберегти/оновити логічний інтерфейс
+        // 1) оновити логічний інтерфейс
         Interface existing = RouterInterfaces.get(req.name);
         if (existing != null) {
-            // зупиняємо RX і розв'язуємо старий бінд перед оновленням IP/маски
+            // зупиняємо RX і розв’язуємо старий бінд перед оновленням IP/маски
             rx.stop(req.name);
             ifbm.unbind(req.name);
             RouterInterfaces.remove(req.name);
@@ -46,26 +62,35 @@ public class InterfaceController {
         Interface ni = new Interface(req.ip, req.mask, req.name);
         RouterInterfaces.Add_Interface(ni);
 
-        // 2) вибрати NIC
-        String nic = req.nic; // ДОДАЙ це поле в NewInterfaceDTO (опційно)
+        // 2) вибір NIC
+        String nic = req.nic; // ДОДАЙ поле nic у NewInterfaceDTO (якщо ще нема)
         if (nic == null || nic.isBlank()) {
-            // авто-вибір: перший активний enN, N>6
-            Set<String> active = watcher.snapshotActiveIfaces(); // вже відфільтровані enN>6 у твоїй реалізації
+            // авто-вибір: перший активний, який трекає LinkStatusWatcher
+            Set<String> active = watcher.snapshotActiveIfaces();
             nic = active.stream().findFirst().orElse(null);
         }
 
         if (nic == null) {
-            // немає доступних активних NIC — IP збережено, але бінд не зроблено
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(new ApiResponseWrapper<>("saved_no_bind", "no active NIC (enN, N>6)"));
+                    .body(new ApiResponseWrapper<>("saved_no_bind", "no active NIC available"));
         }
 
-        // 3) bind → start RX
+        // 3) bind → start RX з демультиплексором
         try {
-            ifbm.bind(req.name, nic);                 // відкриє pcap і поставить базовий BPF
-            rx.start(req.name, arp::onEthernetFrame); // запустить loop(-1, ...)
+            // відкриє pcap-ручки та (якщо реалізовано) виставить базовий BPF
+            ifbm.bind(req.name, nic);
+
+            // один спільний handler, який всередині розводить ARP / RIP / інше
+            DemuxPacketHandler demux = new DemuxPacketHandler(arp, rip, fwd);
+            rx.start(req.name, demux); // запустить loop(-1, ...)
+            var ip    = new network.IpAddres(req.ip);
+            var mask  = new network.IpAddres(req.mask);            // якщо mask у форматі "255.255.255.0"
+            int len   = network.IpAddres.prefixFromMask(mask);     // 24
+            var net   = ip.networkAddress(len);                    // 192.168.1.0
+
+            rib.upsertConnected(net, len, req.name);
+
         } catch (Exception e) {
-            // якщо NIC неактивний або не дозволений — сюди
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new ApiResponseWrapper<>("bind_failed", e.getMessage()));
         }
@@ -80,26 +105,32 @@ public class InterfaceController {
                 .map(Interface::toString)
                 .toList();
 
-        String responce= new String("");
-        for (String item : items) {
-            responce+=item + '\n';
-        }
+        StringBuilder sb = new StringBuilder();
+        for (String item : items) sb.append(item).append('\n');
 
-        return ResponseEntity.ok(new ApiResponseWrapper<>("ok", responce));
+        return ResponseEntity.ok(new ApiResponseWrapper<>("ok", sb.toString()));
     }
+
     @DeleteMapping("/{name}")
     public ResponseEntity<?> deleteInterface(@PathVariable String name) {
         try {
-            rx.stop(name);
-            ifbm.unbind(name);
-            RouterInterfaces.remove(name); // твій сторедж логічних інтерфейсів
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+
+                var intf = RouterInterfaces.get(name);
+                if (intf != null) {
+                    var ip = new network.IpAddres(intf.getIpAddres().toString());
+                    var mask = new network.IpAddres(intf.getIpMask().toString());
+                    int len = network.IpAddres.prefixFromMask(mask);
+                    var net = ip.networkAddress(len);
+
+                    rib.removeConnected(net, len);
+                    rx.stop(name);
+                    ifbm.unbind(name);
+                    RouterInterfaces.remove(name);
+                    return ResponseEntity.ok().build();
+                }
+            } catch(Exception e){
+                return ResponseEntity.badRequest().body(e.getMessage());
+            }
+        return ResponseEntity.ok().body("ok");
     }
-
-
-
 }
-

@@ -7,12 +7,11 @@ import org.pcap4j.packet.namednumber.ArpOperation;
 import org.pcap4j.packet.namednumber.EtherType;
 import org.pcap4j.util.MacAddress;
 import ports.TxSender;
+import rib.Rib;
 
 import java.net.Inet4Address;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import network.IpAddres;
-
 
 public class ArpEngine {
 
@@ -21,75 +20,82 @@ public class ArpEngine {
     private final ArpRequestScheduler scheduler;
     private final TxSender tx;
 
-    public ArpEngine(IfAddressBook ifBook, ArpCache cache, ArpRequestScheduler scheduler, TxSender tx) {
+    // >>> нове:
+    private final Rib rib;
+    private final ProxyArpConfig proxyCfg;
+
+    public ArpEngine(IfAddressBook ifBook,
+                     ArpCache cache,
+                     ArpRequestScheduler scheduler,
+                     TxSender tx,
+                     Rib rib,
+                     ProxyArpConfig proxyCfg) {
         this.ifBook = Objects.requireNonNull(ifBook);
         this.cache = Objects.requireNonNull(cache);
         this.scheduler = Objects.requireNonNull(scheduler);
         this.tx = Objects.requireNonNull(tx);
+        this.rib = Objects.requireNonNull(rib);
+        this.proxyCfg = Objects.requireNonNull(proxyCfg);
     }
 
-    /** Викликається з PacketRxLoop для кожного Ethernet кадру. */
     public void onEthernetFrame(EthernetPacket eth, String ifName) {
-        System.out.println("etype=" + eth.getHeader().getType());
-        if (eth.getHeader().getType() != EtherType.ARP) {
-            System.out.println("here1");
-
-            return;
-            }
-        if (!(eth.getPayload() instanceof ArpPacket arp)) {
-            System.out.println("here2");
-               return;
-
-        }
+        System.out.println("EtherType: " + eth.getHeader().getType());
+        if (eth.getHeader().getType() != EtherType.ARP) return;
+        if (!(eth.getPayload() instanceof ArpPacket arp)) return;
 
         ArpPacket.ArpHeader h = arp.getHeader();
-        IpAddres spa = new IpAddres((h.getSrcProtocolAddr().getHostAddress()));
-        MacAddress sha    = h.getSrcHardwareAddr();
+        IpAddres spa = new IpAddres(h.getSrcProtocolAddr().getHostAddress());
+        MacAddress sha = h.getSrcHardwareAddr();
         Inet4Address tpa = (Inet4Address) h.getDstProtocolAddr();
+        System.out.println("tpa host:"+ tpa.getHostAddress()+"\n\n\n" );
+
 
         MacAddress selfMac = ifBook.getMac(ifName);
         IpAddres   selfIp  = ifBook.getIp(ifName);
-        if (sha != null && sha.equals(selfMac)) {
-            return;
-        }
 
-        if (spa.equals(selfIp)) {
-                return;
-        }
+        if (sha != null && sha.equals(selfMac)) return;
+        if (selfIp != null && selfIp.equalsInet4((Inet4Address) h.getSrcProtocolAddr())) return;
+
+        boolean isRequest = h.getOperation().equals(ArpOperation.REQUEST);
+        System.out.println("isREq:"+ isRequest );
+        System.out.println("\n");
+        System.out.printf("[ARP] Got request for %s, my %s on %s%n", tpa, selfIp, ifName);
+
 
         boolean weWaitForSpa = cache.get(spa)
                 .map(e -> e.state == ArpCache.State.INCOMPLETE)
                 .orElse(false);
-
-        boolean askedUs = h.getOperation().equals(ArpOperation.REQUEST) && isLocalTarget(ifName, tpa);
+        boolean askedUs = isRequest && isLocalTarget(ifName, tpa);
 
         if (weWaitForSpa || askedUs) {
-            // Запам'ятати хто нам написав (лише у дозволених кейсах)
             cache.learned(spa, sha);
-            // Пінгнути scheduler: якщо чекали — завершить future
             scheduler.onLearned(ifName, spa, sha);
         }
 
-/*
-        // 1) Запам'ятати хто нам написав
-        cache.learned(spa, sha);
-        // Пінгнути scheduler: якщо чекали цю адресу — завершай future
-        scheduler.onLearned(ifName, spa, sha);
-
- */
-
-        // 2) Якщо це ARP-REQUEST до нашого локального IP — відповідаємо (без proxy)
-        if (h.getOperation().equals(ArpOperation.REQUEST) && isLocalTarget(ifName, tpa)) {
+        if (isRequest && isLocalTarget(ifName, tpa)) {
+            System.out.println("asked us");
             try {
-                MacAddress myMac = ifBook.getMac(ifName);
-                IpAddres myIp = ifBook.getIp(ifName);
-                EthernetPacket reply = ArpFrameBuilder.buildReply(myMac, myIp, sha, spa);
+                EthernetPacket reply = ArpFrameBuilder.buildReply(selfMac, selfIp, sha, spa);
                 tx.send(ifName, reply);
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return;
+        }
+        System.out.println("isRequested:" + isRequest + "\nshouldProxyfor:" + shouldProxyFor(ifName,tpa));
+        if (isRequest && shouldProxyFor(ifName, tpa)) {
+            try {
+                EthernetPacket reply = ArpFrameBuilder.buildReply(selfMac,
+                        new IpAddres(tpa.getHostAddress()), sha, spa);
+                tx.send(ifName, reply);
+
+                cache.learned(new IpAddres(tpa.getHostAddress()), selfMac);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
-    /** Активно дістати MAC для IP через ARP (з кешем і retry). */
     public CompletableFuture<MacAddress> resolve(String ifName, IpAddres target) {
         return cache.get(target)
                 .filter(e -> e.state == ArpCache.State.REACHABLE && e.mac != null)
@@ -104,10 +110,60 @@ public class ArpEngine {
                 });
     }
 
-    /** Чи належить ip цьому логічному інтерфейсу (щоб відповісти на ARP request). */
     public boolean isLocalTarget(String ifName, Inet4Address ip) {
         IpAddres local = ifBook.getIp(ifName);
-        return local != null && local.equals(ip);
+        return local != null && local.equalsInet4(ip); // <<< фікс
+    }
+
+
+    private boolean shouldProxyFor(String inIf, Inet4Address targetIpRaw){
+        final String t = targetIpRaw.getHostAddress();
+
+        // 1) Proxy ARP toggle
+        boolean en = proxyCfg.isEnabledOn(inIf);
+        if (!en) {
+            System.out.printf("[PARP] inIf=%s target=%s -> NO (disabled on inIf)%n", inIf, t);
+            return false;
+        }
+
+        IpAddres target = new IpAddres(t);
+        if (!target.isUnicast()) {
+            System.out.printf("[PARP] inIf=%s target=%s -> NO (not unicast)%n", inIf, t);
+            return false;
+        }
+
+        // 3) Не своя адреса
+        IpAddres self = ifBook.getIp(inIf);
+        if (self != null && self.equals(target)) {
+            System.out.printf("[PARP] inIf=%s target=%s -> NO (target is self IP=%s)%n", inIf, t, self);
+            return false;
+        }
+
+        // 4) RIB lookup
+        var bestOpt = rib.lookup(target);
+        if (bestOpt.isEmpty()) {
+            System.out.printf("[PARP] inIf=%s target=%s -> NO (RIB: no route)%n", inIf, t);
+            return false;
+        }
+
+        var best = bestOpt.get();
+        System.out.printf("[PARP] inIf=%s target=%s RIB -> %s/%d via %s outIf=%s ad=%s proto=%s metric=%d%n",
+                inIf, t,
+                best.network().getIp(), best.length(),
+                (best.nextHop()==null ? "-" : best.nextHop().getIp()),
+                best.outIf(),
+                best.ad(), best.proto(), best.metric());
+/*
+        if (best.outIf() != null && best.outIf().equals(inIf)) {
+            System.out.printf("[PARP] inIf=%s target=%s -> NO (best.outIf==inIf: %s)%n", inIf, t, inIf);
+            return false;
+        }
+*/
+
+        System.out.printf("[PARP] inIf=%s target=%s -> YES (route exits via %s)%n",
+                inIf, t, best.outIf());
+
+        return true;
     }
 
 }

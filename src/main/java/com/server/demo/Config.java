@@ -1,9 +1,6 @@
 package com.server.demo; // <-- той самий пакет, що й DemoApplication
 
-import ARP.ArpCache;
-import ARP.ArpEngine;
-import ARP.ArpRequestScheduler;
-import ARP.IfAddressBook;
+import ARP.*;
 import network.Interface;
 import network.IpAddres;
 import network.RouterInterfaces;
@@ -16,10 +13,10 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import ports.IfBindingManager;
-import ports.LinkStatusWatcher;
-import ports.PacketRxLoop;
-import ports.TxSender;
+import ports.*;
+import rib.InMemoryRib;
+import rib.Rib;
+import rip.RipEngine;
 
 @Configuration
 public class Config {
@@ -102,10 +99,28 @@ public class Config {
     }
 
     @Bean
-    public ArpEngine arpEngine(IfAddressBook book, ArpCache cache, ArpRequestScheduler sched, TxSender tx) {
-        return new ArpEngine(book, cache, sched, tx);
+    public ProxyArpConfig proxyArpConfig() { return new ProxyArpConfig(); }
+
+    @Bean
+    public ArpEngine arpEngine(IfAddressBook ifBook,
+                               ArpCache cache,
+                               ArpRequestScheduler scheduler,
+                               TxSender tx,
+                               Rib rib,
+                               ProxyArpConfig proxyCfg) {
+        return new ArpEngine(ifBook, cache, scheduler, tx, rib, proxyCfg);
+    }
+    @Bean
+    public Rib rib(){ return new InMemoryRib(); }
+
+    @Bean
+    public RipEngine ripEngine(Rib rib){
+        return new RipEngine(rib);
     }
 
-
+    @Bean
+    public Forwarder forwarder(Rib rib, ArpEngine arpEngine, TxSender txSender, IfAddressBook ifAddressBook) {
+        return new Forwarder(rib, arpEngine, txSender, ifAddressBook);
+    }
 
 }

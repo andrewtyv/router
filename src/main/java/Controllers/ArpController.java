@@ -3,24 +3,13 @@ package Controllers;
 import ARP.ArpCache;
 import ARP.ArpCache.ArpRow;
 import ARP.ArpEngine;
+import ARP.ProxyArpConfig;
 import dto.ResolveReq;
 import network.IpAddres;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import org.pcap4j.core.NotOpenException;
-import org.pcap4j.core.PacketListener;
-import org.pcap4j.core.PcapHandle;
-import org.pcap4j.packet.EthernetPacket;
-import org.pcap4j.packet.Packet;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.*;
-
+import java.util.concurrent.TimeUnit;
 
 import java.net.InetAddress;
 import java.util.List;
@@ -36,9 +25,12 @@ public class ArpController {
     @Autowired
     private final ArpEngine arp;
 
-    public ArpController(ArpCache cache, ArpEngine arp) {
+    private final ProxyArpConfig cfg;
+
+    public ArpController(ArpCache cache, ArpEngine arp, ProxyArpConfig cfg) {
         this.cache = cache;
         this.arp = arp ;
+        this.cfg = cfg;
     }
 
     @GetMapping("/table")
@@ -82,6 +74,26 @@ public class ArpController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+    }
+
+    /** Глобальний тумблер Proxy ARP */
+    @PostMapping("/enable")
+    public ResponseEntity<String> setGlobal(@RequestParam boolean enabled) {
+        cfg.setEnabled(enabled);
+        return ResponseEntity.ok("proxy-arp global=" + enabled);
+    }
+
+    /** Пер-інтерфейсний тумблер */
+    @PostMapping("/if/{ifName}/enable")
+    public ResponseEntity<String> setOnIf(@PathVariable String ifName, @RequestParam boolean enabled) {
+        if (enabled) cfg.enableOn(ifName); else cfg.disableOn(ifName);
+        return ResponseEntity.ok("proxy-arp " + ifName + "=" + enabled);
+    }
+
+    /** Статус (зручно фронту) */
+    @GetMapping("/status")
+    public ResponseEntity<String> status() {
+        return ResponseEntity.ok("proxy-arp global=" + cfg.isEnabled());
     }
 
 }
