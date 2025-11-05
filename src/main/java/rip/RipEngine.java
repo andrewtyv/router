@@ -22,7 +22,6 @@ public class RipEngine {
         this.rib = Objects.requireNonNull(rib);
     }
 
-    /** Увімкнути RIP на інтерфейсі */
     public void enableOnInterface(String ifName,
                                   MacAddress ifMac,
                                   IpAddres ifIp,
@@ -37,7 +36,6 @@ public class RipEngine {
         }, 30, 30, TimeUnit.SECONDS);
     }
 
-    /** Вимкнути RIP на інтерфейсі */
     public void disableOnInterface(String ifName) {
         RipInterface rif = ifaces.remove(ifName);
         if (rif != null) {
@@ -46,7 +44,6 @@ public class RipEngine {
         }
     }
 
-    /** Тригерний апдейт (rate-limit 1s/IF) */
     public void triggerUpdate(String ifName) {
         RipInterface rif = ifaces.get(ifName);
         if (rif == null) return;
@@ -59,7 +56,6 @@ public class RipEngine {
         try { rif.sendPeriodicUpdate(); } catch (Exception e) { /* TODO лог */ }
     }
 
-    /** Вхід RIP-пакета з Demux/Rx */
     public void onRipPacket(String inIfName, IpAddres srcIp, byte[] udpPayload) {
         try {
             RipParser.RipMessage msg = RipParser.parse(udpPayload);

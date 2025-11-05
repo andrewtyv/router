@@ -32,7 +32,7 @@ public class ArpFrameBuilder {
                 .operation(ArpOperation.REQUEST)
                 .srcHardwareAddr(srcMac)
                 .srcProtocolAddr(toInet4(srcIp))
-                .dstHardwareAddr(ZERO_MAC)                // у ARP-request target MAC невідомий -> 00:00:00:00:00:00
+                .dstHardwareAddr(ZERO_MAC)                //  ARP-request MAC -> 00:00:00:00:00:00
                 .dstProtocolAddr(toInet4(targetIp));
 
         EthernetPacket.Builder eth = new EthernetPacket.Builder()

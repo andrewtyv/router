@@ -20,7 +20,6 @@ public class ArpEngine {
     private final ArpRequestScheduler scheduler;
     private final TxSender tx;
 
-    // >>> нове:
     private final Rib rib;
     private final ProxyArpConfig proxyCfg;
 
@@ -85,6 +84,7 @@ public class ArpEngine {
         System.out.println("isRequested:" + isRequest + "\nshouldProxyfor:" + shouldProxyFor(ifName,tpa));
         if (isRequest && shouldProxyFor(ifName, tpa)) {
             try {
+                System.out.println("Sending reply for proxy with:selfMac:" + selfMac + "tpa:" + tpa.getHostAddress() + " sha:" + sha+ " spa:" +spa );
                 EthernetPacket reply = ArpFrameBuilder.buildReply(selfMac,
                         new IpAddres(tpa.getHostAddress()), sha, spa);
                 tx.send(ifName, reply);
@@ -112,7 +112,7 @@ public class ArpEngine {
 
     public boolean isLocalTarget(String ifName, Inet4Address ip) {
         IpAddres local = ifBook.getIp(ifName);
-        return local != null && local.equalsInet4(ip); // <<< фікс
+        return local != null && local.equalsInet4(ip);
     }
 
 
@@ -132,7 +132,7 @@ public class ArpEngine {
             return false;
         }
 
-        // 3) Не своя адреса
+        // 3) if i am asking
         IpAddres self = ifBook.getIp(inIf);
         if (self != null && self.equals(target)) {
             System.out.printf("[PARP] inIf=%s target=%s -> NO (target is self IP=%s)%n", inIf, t, self);
@@ -153,12 +153,14 @@ public class ArpEngine {
                 (best.nextHop()==null ? "-" : best.nextHop().getIp()),
                 best.outIf(),
                 best.ad(), best.proto(), best.metric());
-/*
+
+        // to enable canceling proxy when i should return on the same intf
+
         if (best.outIf() != null && best.outIf().equals(inIf)) {
             System.out.printf("[PARP] inIf=%s target=%s -> NO (best.outIf==inIf: %s)%n", inIf, t, inIf);
             return false;
         }
-*/
+
 
         System.out.printf("[PARP] inIf=%s target=%s -> YES (route exits via %s)%n",
                 inIf, t, best.outIf());

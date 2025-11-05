@@ -21,14 +21,12 @@ public class PacketRxLoop {
         Thread t = new Thread(r, "rx-loop"); t.setDaemon(true); return t;
     });
 
-    /** ifName -> running future */
     private final Map<String, Future<?>> loops = new ConcurrentHashMap<>();
 
     public PacketRxLoop(IfBindingManager binding) {
         this.binding = Objects.requireNonNull(binding);
     }
 
-    /** Запускає loop(-1, ...) для ifName. Якщо вже запущено — нічого не робить. */
     public synchronized void start(String ifName, PacketHandler handler) {
         if (loops.containsKey(ifName)) return;
 
@@ -66,7 +64,6 @@ public class PacketRxLoop {
         log.info("RX loop started: {}", ifName);
     }
 
-    /** Зупиняє loop для ifName (breakLoop) і чекає завершення потоку. */
     public synchronized void stop(String ifName) {
         Future<?> fut = loops.get(ifName);
         PcapHandle handle = binding.getHandle(ifName);

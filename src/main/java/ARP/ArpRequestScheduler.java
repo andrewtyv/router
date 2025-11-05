@@ -27,8 +27,8 @@ public class ArpRequestScheduler {
         Thread t = new Thread(r, "arp-resolve"); t.setDaemon(true); return t;
     });
 
-    // Політика retry
-    private final int[] DELAYS_MS = {1000, 1000, 2000}; // 3 спроби
+    //retry
+    private final int[] DELAYS_MS = {1000, 1000, 2000}; // 3 try
 
     public ArpRequestScheduler(IfAddressBook ifBook, TxSender tx) {
         this.ifBook = Objects.requireNonNull(ifBook);
@@ -37,7 +37,6 @@ public class ArpRequestScheduler {
 
     private static String key(String ifName, IpAddres ip) { return ifName + "|" + ip.getIp(); }
 
-    /** Запустити/перезапустити resolve (не створить дублікатів для того ж ключа). */
     public CompletableFuture<MacAddress> kick(String ifName, IpAddres target) {
         String k = key(ifName, target);
         Job existing = jobs.get(k);
@@ -84,7 +83,6 @@ public class ArpRequestScheduler {
         if (job.timer != null) { job.timer.cancel(true); job.timer = null; }
     }
 
-    /** Виклич ArpEngine, коли побачив ARP від цього target — щоб завершити resolve. */
     public void onLearned(String ifName, IpAddres ip, MacAddress mac) {
         Job j = jobs.get(key(ifName, ip));
         if (j != null) complete(j, mac);

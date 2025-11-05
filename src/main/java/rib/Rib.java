@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Optional;
 
 public interface Rib {
-    // --- CRUD джерел ---
     void upsertConnected(IpAddres network, int length, String outIf);         // nextHop=null, metric=0, AD=0
     void removeConnected(IpAddres network, int length);
 
@@ -17,11 +16,9 @@ public interface Rib {
     void upsertRip(RouteEntry ripRoute);                                       // AD=RIP, proto=RIP
     void removeRip(IpAddres network, int length, IpAddres learnedFrom);        // якщо learnedFrom=null — будь-який сусід
 
-    // --- Lookup / View ---
     Optional<RouteEntry> lookup(IpAddres dst);
     List<RouteEntry> snapshot();
 
-    // --- Слухачі змін ---
     void addListener(RibListener l);
     void removeListener(RibListener l);
 }

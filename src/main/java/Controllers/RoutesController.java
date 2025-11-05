@@ -33,11 +33,9 @@ public class RoutesController {
     @PostMapping("/add_static")
     public ResponseEntity<?> add(@RequestBody RouteDTO dto) {
         try {
-            // 1) розбір destination
             IpAddres.Cidr cidr = IpAddres.parseCidr(dto.getDestination());
             IpAddres net = cidr.address.networkAddress(cidr.prefix);
 
-            // 2) валідації згідно умови
             boolean hasOutIf  = dto.getOutIf() != null && !dto.getOutIf().isBlank();
             boolean hasNextHop = dto.getNextHop() != null && !dto.getNextHop().isBlank();
             if (!hasOutIf && !hasNextHop) {
@@ -54,12 +52,11 @@ public class RoutesController {
                         .body(new ApiResponseWrapper<>("err", "cannot infer outIf for nextHop " + nh));
             }
 
-            // 3) створюємо RouteEntry (STATIC, AD=1, metric=0)
             RouteEntry re = RouteEntry.builder()
                     .network(net)
                     .length(cidr.prefix)
                     .outIf(outIf)
-                    .nextHop(nh)             // може бути null (on-link static)
+                    .nextHop(nh)
                     .metric(0)
                     .ad(AdminDistance.STATIC)
                     .proto(Proto.STATIC)

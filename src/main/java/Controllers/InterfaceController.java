@@ -23,7 +23,7 @@ public class InterfaceController {
     private final IfBindingManager ifbm;
     private final PacketRxLoop rx;
     private final ArpEngine arp;
-    private final RipEngine rip;           // <<< додали
+    private final RipEngine rip;
     private final LinkStatusWatcher watcher;
     private final Rib rib;
     private final Forwarder fwd;
@@ -33,7 +33,7 @@ public class InterfaceController {
             IfBindingManager ifbm,
             PacketRxLoop rx,
             ArpEngine arp,
-            RipEngine rip,                 // <<< інжектимо RipEngine
+            RipEngine rip,
             LinkStatusWatcher watcher,
             Rib rib,
             Forwarder fwd
@@ -41,7 +41,7 @@ public class InterfaceController {
         this.ifbm = ifbm;
         this.rx = rx;
         this.arp = arp;
-        this.rip = rip;                   // <<<
+        this.rip = rip;
         this.watcher = watcher;
         this.rib = rib;
         this.fwd = fwd;
@@ -63,9 +63,8 @@ public class InterfaceController {
         RouterInterfaces.Add_Interface(ni);
 
         // 2) вибір NIC
-        String nic = req.nic; // ДОДАЙ поле nic у NewInterfaceDTO (якщо ще нема)
+        String nic = req.nic;
         if (nic == null || nic.isBlank()) {
-            // авто-вибір: перший активний, який трекає LinkStatusWatcher
             Set<String> active = watcher.snapshotActiveIfaces();
             nic = active.stream().findFirst().orElse(null);
         }
@@ -75,16 +74,14 @@ public class InterfaceController {
                     .body(new ApiResponseWrapper<>("saved_no_bind", "no active NIC available"));
         }
 
-        // 3) bind → start RX з демультиплексором
+        // 3) bind → start RX
         try {
-            // відкриє pcap-ручки та (якщо реалізовано) виставить базовий BPF
             ifbm.bind(req.name, nic);
 
-            // один спільний handler, який всередині розводить ARP / RIP / інше
             DemuxPacketHandler demux = new DemuxPacketHandler(arp, rip, fwd);
             rx.start(req.name, demux); // запустить loop(-1, ...)
             var ip    = new network.IpAddres(req.ip);
-            var mask  = new network.IpAddres(req.mask);            // якщо mask у форматі "255.255.255.0"
+            var mask  = new network.IpAddres(req.mask);            // mask "255.255.255.0"
             int len   = network.IpAddres.prefixFromMask(mask);     // 24
             var net   = ip.networkAddress(len);                    // 192.168.1.0
 

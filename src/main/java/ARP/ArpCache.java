@@ -39,7 +39,7 @@ public class ArpCache {
         Thread t = new Thread(r, "arp-aging"); t.setDaemon(true); return t;
     });
 
-    // Політика aging (налаштовуй як хочеш)
+    //policy if want to change
     private final int REACHABLE_TO_STALE_SEC = 60;
     private final int STALE_EVICT_SEC = 120;
 
@@ -59,7 +59,6 @@ public class ArpCache {
         }
     }
 
-    /** Вчимося з будь-якого ARP (request/reply) */
     public void learned(IpAddres ip, MacAddress mac) {
         ArpEntry e = table.computeIfAbsent(ip, k -> new ArpEntry(k, State.INCOMPLETE));
         e.mac = mac;
@@ -67,7 +66,6 @@ public class ArpCache {
         e.updatedMillis = System.currentTimeMillis();
     }
 
-    /** Почати resolve (створить INCOMPLETE запис, якщо його не було) */
     public ArpEntry beginResolve(IpAddres ip) {
         return table.compute(ip, (k, v) -> {
             if (v == null) return new ArpEntry(k, State.INCOMPLETE);

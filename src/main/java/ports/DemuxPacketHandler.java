@@ -27,6 +27,7 @@ public class DemuxPacketHandler implements PacketHandler {
 
         // 1) ARP
         if (EtherType.ARP.equals(et)) {
+            System.out.println("demux arp works");
             arp.onEthernetFrame(eth, ifName);
             System.out.println();
             return;

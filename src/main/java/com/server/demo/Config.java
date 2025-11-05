@@ -1,4 +1,4 @@
-package com.server.demo; // <-- той самий пакет, що й DemoApplication
+package com.server.demo;
 
 import ARP.*;
 import network.Interface;
@@ -24,9 +24,9 @@ public class Config {
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable())                 // без CSRF для простих REST
+                .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/**").permitAll()   // дозволити все під /api/**
+                        .requestMatchers("/api/**").permitAll()
                         .anyRequest().permitAll()
                 )
                 .httpBasic(basic -> basic.disable())
@@ -79,7 +79,6 @@ public class Config {
         return new ArpCache();
     }
 
-    /** IP беремо з твоєї моделі, MAC — із IfBindingManager */
     @Bean
     public IfAddressBook ifAddressBook(IfBindingManager ifbm) {
         return new IfAddressBook() {

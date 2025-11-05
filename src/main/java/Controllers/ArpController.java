@@ -76,21 +76,18 @@ public class ArpController {
         }
     }
 
-    /** Глобальний тумблер Proxy ARP */
     @PostMapping("/enable")
     public ResponseEntity<String> setGlobal(@RequestParam boolean enabled) {
         cfg.setEnabled(enabled);
         return ResponseEntity.ok("proxy-arp global=" + enabled);
     }
 
-    /** Пер-інтерфейсний тумблер */
     @PostMapping("/if/{ifName}/enable")
     public ResponseEntity<String> setOnIf(@PathVariable String ifName, @RequestParam boolean enabled) {
         if (enabled) cfg.enableOn(ifName); else cfg.disableOn(ifName);
         return ResponseEntity.ok("proxy-arp " + ifName + "=" + enabled);
     }
 
-    /** Статус (зручно фронту) */
     @GetMapping("/status")
     public ResponseEntity<String> status() {
         return ResponseEntity.ok("proxy-arp global=" + cfg.isEnabled());
