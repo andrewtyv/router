@@ -1,10 +1,10 @@
-package dto; //
+package dto;
 
 public class ResolveReq {
     private String ifName;
     private String ip;
 
-    public ResolveReq() {}  // обов’язковий для Jackson / Spring
+    public ResolveReq() {}
 
     public ResolveReq(String ifName, String ip) {
         this.ifName = ifName;

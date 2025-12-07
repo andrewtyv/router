@@ -44,5 +44,17 @@ public class IpMask {
         this.o4 = o4;
     }
 
+    public int toInt() {
+        return ((o1 & 0xFF) << 24) |
+                ((o2 & 0xFF) << 16) |
+                ((o3 & 0xFF) << 8)  |
+                (o4 & 0xFF);
+    }
+
+    @Override
+    public String toString() {
+        return get_Mask();
+    }
+
 
 }

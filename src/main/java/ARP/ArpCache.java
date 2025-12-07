@@ -39,7 +39,6 @@ public class ArpCache {
         Thread t = new Thread(r, "arp-aging"); t.setDaemon(true); return t;
     });
 
-    //policy if want to change
     private final int REACHABLE_TO_STALE_SEC = 60;
     private final int STALE_EVICT_SEC = 120;
 

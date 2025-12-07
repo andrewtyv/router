@@ -1,13 +1,10 @@
 package dto;
 
-/**
- * Використовується для додавання або видалення статичних маршрутів.
- * destination — обов’язкове поле, outIf і nextHop — опціональні.
- */
+
 public class RouteDTO {
     private String destination;  // "A.B.C.D/len"
-    private String outIf;        // опційно (інтерфейс)
-    private String nextHop;      // опційно "A.B.C.D"
+    private String outIf;
+    private String nextHop;      // "A.B.C.D"
 
     public String getDestination() { return destination; }
     public String getOutIf() { return outIf; }

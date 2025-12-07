@@ -7,12 +7,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Парсер RIPv2 payload (UDP data):
- * Header: 1B cmd, 1B version, 2B zero
- * RTE x N:  2B AFI (2 для IPv4), 2B RouteTag,
- *           4B IP, 4B Mask, 4B NextHop, 4B Metric (1..16)
- */
+
 public final class RipParser {
 
     public static final byte CMD_REQUEST  = 1;
@@ -21,69 +16,90 @@ public final class RipParser {
 
     private RipParser(){}
 
-    /** Розібрати UDP-пейлоад у структуру RipMessage з RTE. Кидає IllegalArgumentException при помилках. */
     public static RipMessage parse(byte[] payload) {
-        if (payload == null || payload.length < 4)
-            throw new IllegalArgumentException("RIP payload too short");
+        if (payload == null || payload.length < 4) {
+            throw new IllegalArgumentException("RIP payload too short: len=" + (payload == null ? -1 : payload.length));
+        }
 
-        ByteBuffer bb = ByteBuffer.wrap(payload).order(ByteOrder.BIG_ENDIAN);
+        int pos = 0;
 
-        byte cmd = bb.get();
-        byte ver = bb.get();
-        short zero = bb.getShort(); // має бути 0, але багато стеків ігнорують
+        int cmdInt = payload[pos++] & 0xFF;
+        int verInt = payload[pos++] & 0xFF;
+        int zero = ((payload[pos++] & 0xFF) << 8)
+                |  (payload[pos++] & 0xFF);
 
-        if (ver != VERSION_2)
-            throw new IllegalArgumentException("Unsupported RIP version: " + ver);
+        byte cmd = (byte) cmdInt;
+        byte ver = (byte) verInt;
 
-        // Парсимо RTE (кратні 20 байт)
+        System.out.printf("[RIP PARSE] cmd=%d ver=%d first4=%02X %02X %02X %02X len=%d%n",
+                cmdInt, verInt,
+                payload[0] & 0xFF,
+                payload[1] & 0xFF,
+                payload[2] & 0xFF,
+                payload[3] & 0xFF,
+                payload.length
+        );
+
+        if (verInt != VERSION_2) {
+
+            throw new IllegalArgumentException("Unsupported RIP version: " + verInt);
+        }
+
         List<Rte> rtes = new ArrayList<>();
-        while (bb.remaining() >= 20) {
-            short afi = bb.getShort();      // 2 -> IPv4
-            short routeTag = bb.getShort(); // ігноруємо (0 зазвич.)
-            int ipRaw = bb.getInt();
-            int maskRaw = bb.getInt();
-            int nhRaw = bb.getInt();
-            int metric = bb.getInt();
+
+        while (pos + 20 <= payload.length) {
+            int afi = readU16(payload, pos);       pos += 2;
+            int routeTag = readU16(payload, pos);  pos += 2;
+            int ipRaw = readS32(payload, pos);     pos += 4;
+            int maskRaw = readS32(payload, pos);   pos += 4;
+            int nhRaw = readS32(payload, pos);     pos += 4;
+            int metric = readS32(payload, pos);    pos += 4;
 
             if (afi != 2) {
-                // Пропускаємо не-IPv4 RTE (RIPng тощо) — або кидати помилку
                 continue;
             }
             if (metric < 1 || metric > 16) {
-                // Невалідна метрика
                 continue;
             }
+
             int prefixLen = maskToPrefixLen(maskRaw);
             if (prefixLen < 0) {
-                // Невалідна маска (небезперервні біти)
                 continue;
             }
 
             IpAddres ip = IpAddres.fromInt(ipRaw);
-            IpAddres maskNetAddr = ip.networkAddress(prefixLen); // нормалізуємо адресу до мережі
+            IpAddres netAddr = ip.networkAddress(prefixLen);
             IpAddres nextHop = (nhRaw == 0) ? null : IpAddres.fromInt(nhRaw);
 
-            Rte rte = new Rte(maskNetAddr, prefixLen, nextHop, metric);
+            Rte rte = new Rte(netAddr, prefixLen, nextHop, metric);
             rtes.add(rte);
         }
 
-        RipMessage msg = new RipMessage(cmd, ver, rtes);
-        return msg;
+        return new RipMessage(cmd, ver, rtes);
     }
 
-    /** Маска (big-endian int) → довжина префікса; повертає -1 якщо маска не суцільна. */
+
+    private static int readU16(byte[] data, int pos) {
+        return ((data[pos] & 0xFF) << 8)
+                |  (data[pos + 1] & 0xFF);
+    }
+
+    private static int readS32(byte[] data, int pos) {
+        return ((data[pos]     & 0xFF) << 24)
+                | ((data[pos + 1] & 0xFF) << 16)
+                | ((data[pos + 2] & 0xFF) << 8)
+                |  (data[pos + 3] & 0xFF);
+    }
+
     private static int maskToPrefixLen(int mask) {
-        // приклад: /24 => 0xFFFFFF00
-        // Перевіряємо, що біти виду 111..1100..00 (суцільна)
+
         int cnt = Integer.bitCount(mask);
         if (cnt == 0) return 0;
-        // Побудуємо ідеальну маску з тією ж кількістю одиниць
         int ideal = cnt == 32 ? 0xFFFFFFFF : (int)(0xFFFFFFFFL << (32 - cnt));
         if (mask != ideal) return -1;
         return cnt;
     }
 
-    // ------------------- DTO-класи -------------------
 
     public static final class RipMessage {
         private final byte cmd;
@@ -105,10 +121,10 @@ public final class RipParser {
     }
 
     public static final class Rte {
-        private final IpAddres prefixNetwork; // нормалізована мережева адреса
-        private final int prefixLen;          // 0..32
-        private final IpAddres nextHop;       // null -> 0.0.0.0
-        private final int metric;             // 1..16
+        private final IpAddres prefixNetwork;
+        private final int prefixLen;
+        private final IpAddres nextHop;
+        private final int metric;
 
         public Rte(IpAddres prefixNetwork, int prefixLen, IpAddres nextHop, int metric) {
             this.prefixNetwork = prefixNetwork;

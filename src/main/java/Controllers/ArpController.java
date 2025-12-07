@@ -59,13 +59,12 @@ public class ArpController {
     public ResponseEntity<?> deleteByBody(@RequestBody String body) {
         try {
             String raw = body == null ? "" : body.trim();
-            // якщо прийшов JSON-рядок в лапках — знімаємо їх
             if (raw.startsWith("\"") && raw.endsWith("\"") && raw.length() >= 2) {
                 raw = raw.substring(1, raw.length() - 1);
             }
             if (raw.isEmpty()) return ResponseEntity.badRequest().body("Empty IP");
 
-            String norm = InetAddress.getByName(raw).getHostAddress(); // нормалізація
+            String norm = InetAddress.getByName(raw).getHostAddress();
             IpAddres key = new IpAddres(norm);
 
             boolean existed = cache.get(key).isPresent();

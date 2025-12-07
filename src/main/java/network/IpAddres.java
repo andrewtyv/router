@@ -11,7 +11,6 @@ public class IpAddres implements Comparable<IpAddres> {
     private int o3;
     private int o4;
 
-    /* -------------------- Конструктори -------------------- */
 
     public IpAddres(String ip) {
         int[] t = parseIpv4(ip);
@@ -28,7 +27,6 @@ public class IpAddres implements Comparable<IpAddres> {
         this.o4 = checkOctet(o4);
     }
 
-    /* -------------------- Представлення -------------------- */
 
     public String getIp() {
         return o1 + "." + o2 + "." + o3 + "." + o4;
@@ -52,7 +50,6 @@ public class IpAddres implements Comparable<IpAddres> {
         return Integer.hashCode(toInt());
     }
 
-    /* -------------------- Конвертації -------------------- */
 
     public byte[] toBytes() {
         return new byte[] { (byte)o1, (byte)o2, (byte)o3, (byte)o4 };
@@ -87,7 +84,6 @@ public class IpAddres implements Comparable<IpAddres> {
         return !isLoopback() && !isLinkLocal() && !isMulticast() && !isBroadcast() && !isUnspecified();
     }
 
-    /* -------------------- Підмережі / CIDR -------------------- */
 
     public boolean inSubnet(IpAddres network, int prefix) {
         int mask = toPrefixMaskInt(prefix);

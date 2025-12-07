@@ -17,7 +17,7 @@ public class Forwarder {
     private final Rib rib;
     private final ArpEngine arp;
     private final TxSender tx;
-    private final IfAddressBook ifBook; // твій каталог MAC/IP по логічним інтерфейсам
+    private final IfAddressBook ifBook;
 
     public Forwarder(Rib rib, ArpEngine arp, TxSender tx, IfAddressBook ifBook) {
         this.rib = rib;
@@ -43,7 +43,6 @@ public class Forwarder {
             return;
         }
 
-        //  Lookup  RIB:
         Optional<RouteEntry> bestOpt = rib.lookup(dst);
         if (bestOpt.isEmpty()) {
             // TODO: ICMP Destination Unreachable (Network/Host)
@@ -52,7 +51,6 @@ public class Forwarder {
         RouteEntry re = bestOpt.get();
         String outIf = re.outIf();
         if (outIf == null) {
-            // cannot send - drop
             return;
         }
 

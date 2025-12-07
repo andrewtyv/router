@@ -1,6 +1,9 @@
 package com.server.demo;
 
 import ARP.*;
+import DHCP.DHCPEngine;
+import DHCP.DhcpIpConflictDetector;
+import DHCP.DhcpTx;
 import network.Interface;
 import network.IpAddres;
 import network.RouterInterfaces;
@@ -82,11 +85,14 @@ public class Config {
     @Bean
     public IfAddressBook ifAddressBook(IfBindingManager ifbm) {
         return new IfAddressBook() {
-            @Override public IpAddres getIp(String ifName) {
+            @Override
+            public IpAddres getIp(String ifName) {
                 Interface ni = RouterInterfaces.get(ifName);
                 return ni != null ? ni.getIpAddres() : null;
             }
-            @Override public MacAddress getMac(String ifName) {
+
+            @Override
+            public MacAddress getMac(String ifName) {
                 return ifbm.getMac(ifName);
             }
         };
@@ -98,7 +104,9 @@ public class Config {
     }
 
     @Bean
-    public ProxyArpConfig proxyArpConfig() { return new ProxyArpConfig(); }
+    public ProxyArpConfig proxyArpConfig() {
+        return new ProxyArpConfig();
+    }
 
     @Bean
     public ArpEngine arpEngine(IfAddressBook ifBook,
@@ -109,12 +117,15 @@ public class Config {
                                ProxyArpConfig proxyCfg) {
         return new ArpEngine(ifBook, cache, scheduler, tx, rib, proxyCfg);
     }
-    @Bean
-    public Rib rib(){ return new InMemoryRib(); }
 
     @Bean
-    public RipEngine ripEngine(Rib rib){
-        return new RipEngine(rib);
+    public Rib rib() {
+        return new InMemoryRib();
+    }
+
+    @Bean
+    public RipEngine ripEngine(Rib rib, TxSender txSender) {
+        return new RipEngine(rib, txSender);
     }
 
     @Bean
@@ -122,4 +133,18 @@ public class Config {
         return new Forwarder(rib, arpEngine, txSender, ifAddressBook);
     }
 
+    @Bean
+    public DhcpIpConflictDetector dhcpIpConflictDetector(ArpEngine arp, ArpCache cache) {
+        return new DhcpIpConflictDetector(arp, cache);
+    }
+
+    @Bean
+    public DhcpTx dhcpTx(TxSender txSender, IfAddressBook ifBook) {
+        return new DhcpTx(txSender, ifBook);
+    }
+
+    @Bean
+    public DHCPEngine dhcpEngine(DhcpTx tx, DhcpIpConflictDetector detector) {
+        return new DHCPEngine(tx, detector);
+    }
 }

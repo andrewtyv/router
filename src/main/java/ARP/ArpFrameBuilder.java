@@ -18,7 +18,7 @@ public class ArpFrameBuilder {
 
     private static InetAddress toInet4(IpAddres ip) {
         try {
-            return InetAddress.getByAddress(ip.toBytes()); // 4 байти -> Inet4Address
+            return InetAddress.getByAddress(ip.toBytes());
         } catch (UnknownHostException e) {
             throw new IllegalArgumentException("Invalid IPv4: " + ip, e);
         }
@@ -32,12 +32,12 @@ public class ArpFrameBuilder {
                 .operation(ArpOperation.REQUEST)
                 .srcHardwareAddr(srcMac)
                 .srcProtocolAddr(toInet4(srcIp))
-                .dstHardwareAddr(ZERO_MAC)                //  ARP-request MAC -> 00:00:00:00:00:00
+                .dstHardwareAddr(ZERO_MAC)
                 .dstProtocolAddr(toInet4(targetIp));
 
         EthernetPacket.Builder eth = new EthernetPacket.Builder()
                 .srcAddr(srcMac)
-                .dstAddr(MacAddress.ETHER_BROADCAST_ADDRESS) // Ethernet-level broadcast
+                .dstAddr(MacAddress.ETHER_BROADCAST_ADDRESS)
                 .type(EtherType.ARP)
                 .payloadBuilder(arp)
                 .paddingAtBuild(true);

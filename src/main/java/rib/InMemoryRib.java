@@ -15,17 +15,17 @@ import java.util.stream.Collectors;
 public final class InMemoryRib implements Rib {
 
     private static final class Key implements Comparable<Key> {
-        final IpAddres network;  // нормалізована мережева адреса
-        final int length;        // 0..32
+        final IpAddres network;
+        final int length;
         Key(IpAddres anyAddressInPrefix, int length) {
             if (length < 0 || length > 32) throw new IllegalArgumentException("Bad prefix len");
             this.network = Objects.requireNonNull(anyAddressInPrefix).networkAddress(length);
             this.length = length;
         }
         @Override public int compareTo(Key o) {
-            int byLen = Integer.compare(o.length, this.length); // DESC
+            int byLen = Integer.compare(o.length, this.length);
             if (byLen != 0) return byLen;
-            return Integer.compareUnsigned(this.network.toInt(), o.network.toInt()); // ASC
+            return Integer.compareUnsigned(this.network.toInt(), o.network.toInt());
         }
         @Override public boolean equals(Object o) {
             if (this == o) return true;
@@ -86,7 +86,6 @@ public final class InMemoryRib implements Rib {
     public void upsertRip(RouteEntry r) {
         if (r.ad() != AdminDistance.RIP || r.proto() != Proto.RIP)
             throw new IllegalArgumentException("RIP route must have AD=RIP and proto=RIP");
-        // нормалізуємо мережу, щоб key співпадав
         var norm = r.network().networkAddress(r.length());
         var fixed = RouteEntry.builder()
                 .network(norm)
@@ -151,9 +150,9 @@ public final class InMemoryRib implements Rib {
             all.addAll(statics.values());
             all.addAll(rip.values());
             all.sort(Comparator
-                    .<RouteEntry>comparingInt(e -> -e.length())     // LPM спочатку
-                    .thenComparing(e -> e.network())                // далі за адресою
-                    .thenComparingInt(e -> e.ad().value));          // далі за AD
+                    .<RouteEntry>comparingInt(e -> -e.length())
+                    .thenComparing(e -> e.network())
+                    .thenComparingInt(e -> e.ad().value));
             return all;
         } finally {
             rw.readLock().unlock();
@@ -163,7 +162,6 @@ public final class InMemoryRib implements Rib {
     @Override public void addListener(RibListener l){ listeners.add(l); }
     @Override public void removeListener(RibListener l){ listeners.remove(l); }
 
-    // ---------------- helpers ----------------
 
     private void put(NavigableMap<Key, RouteEntry> table, RouteEntry re){
         rw.writeLock().lock();

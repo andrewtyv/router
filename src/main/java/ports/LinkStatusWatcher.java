@@ -17,7 +17,6 @@ public class LinkStatusWatcher {
 
     private static final Logger log = LoggerFactory.getLogger(LinkStatusWatcher.class);
 
-    // як часто опитувати (зробити 1000–2000 мс; 200–500 мс теж ок, але навантаження вище)
     private static final long PERIOD_MS = 1000;
 
     private final ScheduledExecutorService ses = Executors.newSingleThreadScheduledExecutor();
@@ -41,9 +40,9 @@ public class LinkStatusWatcher {
     }
 
     public static class LinkEvent {
-        public final String iface;        // en0
-        public final boolean plugged;     // true=active, false=inactive
-        public final Instant ts;          // коли побачили зміну
+        public final String iface;
+        public final boolean plugged;
+        public final Instant ts;
 
         public LinkEvent(String iface, boolean plugged, Instant ts) {
             this.iface = iface;
@@ -86,21 +85,16 @@ public class LinkStatusWatcher {
     }
 
     private void pollOnce() {
-        // 1) дізнаємося актуальний список інтерфейсів (macOS)
         Set<String> current = listCandidates();
-        // 2) для кожного — зчитуємо статус
         for (String ifn : current) {
             boolean plugged = IfconfigLink.isCablePlugged(ifn);
             Boolean prev = last.put(ifn, plugged);
             if (prev == null) {
-                // перша поява — згенеруй подію тільки якщо хочеш (можна закоментити)
                 fire(new LinkEvent(ifn, plugged, Instant.now()));
             } else if (prev.booleanValue() != plugged) {
-                // зміна стану
                 fire(new LinkEvent(ifn, plugged, Instant.now()));
             }
         }
-        // 3) якщо якісь інтерфейси зникли — відмітимо як unplugged і приберемо
         Iterator<Map.Entry<String, Boolean>> it = last.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<String, Boolean> e = it.next();
@@ -140,6 +134,7 @@ public class LinkStatusWatcher {
         return out;
     }
 
+    //NOT USE!!!!!!
     private static boolean isEnGreaterThan6(String name) {
         /*if (!name.startsWith("en")) return false;
         try {

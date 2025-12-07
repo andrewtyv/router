@@ -11,13 +11,14 @@ import ports.LinkStatusWatcher;
 
 @SpringBootApplication(
 		scanBasePackages = {
-				"com.server.demo", // сам застосунок
-				"Controllers",     // твій контролер тут
-				"network",         // сервіси/сховища
+				"com.server.demo",
+				"Controllers",
+				"network",
 				"dto",
 				"util",
 				"ports",
-				"ARP"
+				"ARP",
+				"rib"
 		}
 )
 

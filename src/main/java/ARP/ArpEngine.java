@@ -119,7 +119,6 @@ public class ArpEngine {
     private boolean shouldProxyFor(String inIf, Inet4Address targetIpRaw){
         final String t = targetIpRaw.getHostAddress();
 
-        // 1) Proxy ARP toggle
         boolean en = proxyCfg.isEnabledOn(inIf);
         if (!en) {
             System.out.printf("[PARP] inIf=%s target=%s -> NO (disabled on inIf)%n", inIf, t);
@@ -132,14 +131,12 @@ public class ArpEngine {
             return false;
         }
 
-        // 3) if i am asking
         IpAddres self = ifBook.getIp(inIf);
         if (self != null && self.equals(target)) {
             System.out.printf("[PARP] inIf=%s target=%s -> NO (target is self IP=%s)%n", inIf, t, self);
             return false;
         }
 
-        // 4) RIB lookup
         var bestOpt = rib.lookup(target);
         if (bestOpt.isEmpty()) {
             System.out.printf("[PARP] inIf=%s target=%s -> NO (RIB: no route)%n", inIf, t);
@@ -154,7 +151,6 @@ public class ArpEngine {
                 best.outIf(),
                 best.ad(), best.proto(), best.metric());
 
-        // to enable canceling proxy when i should return on the same intf
 
         if (best.outIf() != null && best.outIf().equals(inIf)) {
             System.out.printf("[PARP] inIf=%s target=%s -> NO (best.outIf==inIf: %s)%n", inIf, t, inIf);

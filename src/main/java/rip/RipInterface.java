@@ -3,44 +3,74 @@ package rip;
 import network.IpAddres;
 import org.pcap4j.core.PcapHandle;
 import org.pcap4j.util.MacAddress;
-import rib.Rib;                    // твій інтерфейс RIB (якщо в іншому пакеті — поправ import)
+import ports.RipTx;
+import ports.TxSender;
+import rib.Rib;
+import rib.RipRibAdapter;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 
 public class RipInterface {
 
-    private final String ifName;       // наприклад "eth0"
-    private final MacAddress ifMac;    // MAC цього інтерфейсу
-    private final IpAddres ifIp;       // IPv4 цього інтерфейсу
-    private final PcapHandle txHandle; // TX-хендл pcap4j саме на цьому інтерфейсі
+    private final String ifName;
+    private final MacAddress ifMac;
+    private final IpAddres ifIp;
     private final Rib rib;
+    private final TxSender txSender;
 
     public RipInterface(String ifName,
                         MacAddress ifMac,
                         IpAddres ifIp,
-                        PcapHandle txHandle,
+                        TxSender txSender,
                         Rib rib) {
         this.ifName = ifName;
         this.ifMac = ifMac;
         this.ifIp = ifIp;
-        this.txHandle = txHandle;
         this.rib = rib;
+        this.txSender = txSender;
     }
 
-    /** ТВОЙ КОД — відправка періодичного (або тригерного) апдейта на цьому інтерфейсі */
+
     public void sendPeriodicUpdate() throws Exception {
-        boolean poisonReverse = true; // або false, якщо хочеш чистий split-horizon
+        boolean poisonReverse = true;
         var rtes = RipRibAdapter.buildRtesForInterface(rib, ifName, poisonReverse);
 
-        // якщо нема RTE — шлемо лише заголовок (ок для Cisco)
         if (rtes.isEmpty()) {
-            rtes = java.util.List.of();
+            return;
         }
 
-       // RipTx.sendRipResponse(txHandle, ifMac, ifIp, rtes);
+
+        RipTx.sendRipResponse(txSender, ifMac, ifIp,ifName, rtes);
     }
 
+
+    public void sendPoisonUpdate() throws Exception {
+
+        var base = RipRibAdapter.buildRtesForInterface(rib, ifName, false);
+
+        if (base.isEmpty()) {
+            System.out.println("base is empty \n");
+            return;
+        }
+
+        List<RipV2.RipRte> poisoned = new ArrayList<>(base.size());
+        for (RipV2.RipRte r : base) {
+            poisoned.add(new RipV2.RipRte(
+                    r.dest,
+                    r.prefixLen,
+                    r.nextHop,
+                    16
+            ));
+        }
+
+        RipTx.sendRipResponse(txSender, ifMac, ifIp,ifName, poisoned);
+    }
     public String getIfName() { return ifName; }
     public IpAddres getIfIp() { return ifIp; }
     public MacAddress getIfMac() { return ifMac; }
-    public PcapHandle getTxHandle() { return txHandle; }
 }
 

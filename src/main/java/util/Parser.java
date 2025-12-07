@@ -3,7 +3,6 @@ package util;
 public class Parser  {
 
     private Parser() {
-        // приватний конструктор, щоб не створювали інстанс
     }
 
     public static int[] parseIpv4(String ipStr) {

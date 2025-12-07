@@ -3,20 +3,17 @@ package routingTable;
 import network.IpAddres;
 import java.util.Objects;
 
-/**
- * Один запис маршруту в таблиці (RIB).
- * Тепер замість IpPrefix використовує пару (IpAddres network + int length).
- */
+
 public final class RouteEntry {
 
-    private final IpAddres network;    // мережа (нормалізована)
-    private final int length;          // префікс /CIDR 0..32
-    private final String outIf;        // інтерфейс виходу
-    private final IpAddres nextHop;    // null => direct (0.0.0.0)
-    private final int metric;          // 0 - CONNECTED/STATIC; 1..16 - RIP
-    private final AdminDistance ad;    // адміністративна дистанція
-    private final Proto proto;         // джерело маршруту
-    private final IpAddres learnedFrom; // лише для RIP; інакше null
+    private final IpAddres network;
+    private final int length;
+    private final String outIf;
+    private final IpAddres nextHop;
+    private final int metric;
+    private final AdminDistance ad;
+    private final Proto proto;
+    private final IpAddres learnedFrom;
 
     private RouteEntry(Builder b) {
         this.network = Objects.requireNonNull(b.network);

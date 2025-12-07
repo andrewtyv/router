@@ -1,5 +1,7 @@
 package Controllers;
 
+import DHCP.DHCPEngine;
+import DHCP.DhcpMode;
 import dto.NewInterfaceDTO;
 import dto.ApiResponseWrapper;
 import network.Interface;
@@ -11,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import ports.*;
 import ARP.ArpEngine;
 import rib.Rib;
-import rip.RipEngine;   // <<< додали
+import rip.RipEngine;
 
 import java.util.List;
 import java.util.Set;
@@ -27,6 +29,7 @@ public class InterfaceController {
     private final LinkStatusWatcher watcher;
     private final Rib rib;
     private final Forwarder fwd;
+    private final DHCPEngine dhcp;
 
 
     public InterfaceController(
@@ -36,7 +39,8 @@ public class InterfaceController {
             RipEngine rip,
             LinkStatusWatcher watcher,
             Rib rib,
-            Forwarder fwd
+            Forwarder fwd,
+            DHCPEngine dhcp
     ) {
         this.ifbm = ifbm;
         this.rx = rx;
@@ -45,15 +49,14 @@ public class InterfaceController {
         this.watcher = watcher;
         this.rib = rib;
         this.fwd = fwd;
+        this.dhcp = dhcp;
 
     }
 
     @PostMapping("/add_new")
     public ResponseEntity<ApiResponseWrapper<String>> setIp(@RequestBody NewInterfaceDTO req) {
-        // 1) оновити логічний інтерфейс
         Interface existing = RouterInterfaces.get(req.name);
         if (existing != null) {
-            // зупиняємо RX і розв’язуємо старий бінд перед оновленням IP/маски
             rx.stop(req.name);
             ifbm.unbind(req.name);
             RouterInterfaces.remove(req.name);
@@ -62,7 +65,6 @@ public class InterfaceController {
         Interface ni = new Interface(req.ip, req.mask, req.name);
         RouterInterfaces.Add_Interface(ni);
 
-        // 2) вибір NIC
         String nic = req.nic;
         if (nic == null || nic.isBlank()) {
             Set<String> active = watcher.snapshotActiveIfaces();
@@ -74,16 +76,15 @@ public class InterfaceController {
                     .body(new ApiResponseWrapper<>("saved_no_bind", "no active NIC available"));
         }
 
-        // 3) bind → start RX
         try {
             ifbm.bind(req.name, nic);
 
-            DemuxPacketHandler demux = new DemuxPacketHandler(arp, rip, fwd);
-            rx.start(req.name, demux); // запустить loop(-1, ...)
+            DemuxPacketHandler demux = new DemuxPacketHandler(arp, rip, fwd, dhcp);
+            rx.start(req.name, demux);
             var ip    = new network.IpAddres(req.ip);
-            var mask  = new network.IpAddres(req.mask);            // mask "255.255.255.0"
-            int len   = network.IpAddres.prefixFromMask(mask);     // 24
-            var net   = ip.networkAddress(len);                    // 192.168.1.0
+            var mask  = new network.IpAddres(req.mask);
+            int len   = network.IpAddres.prefixFromMask(mask);
+            var net   = ip.networkAddress(len);
 
             rib.upsertConnected(net, len, req.name);
 
@@ -130,4 +131,141 @@ public class InterfaceController {
             }
         return ResponseEntity.ok().body("ok");
     }
+    @PostMapping("/{name}/rip/enable")
+    public ResponseEntity<ApiResponseWrapper<String>> enableRip(@PathVariable String name) {
+        Interface intf = RouterInterfaces.get(name);
+        if (intf == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiResponseWrapper<>("no_such_interface", "Interface " + name + " not found"));
+        }
+
+        try {
+            var ifIp = new network.IpAddres(intf.getIpAddres().toString());
+
+            var ifMac = ifbm.getMac(name);          // MacAddress
+            var txHandle = ifbm.getHandle(name);  // PcapHandle
+
+            if (ifMac == null || txHandle == null) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(new ApiResponseWrapper<>(
+                                "rip_enable_failed",
+                                "no MAC or txHandle for interface " + name + " (is it bound?)"
+                        ));
+            }
+
+            rip.enableOnInterface(name, ifMac, ifIp);
+            return ResponseEntity.ok(
+                    new ApiResponseWrapper<>("rip_enabled", "RIP enabled on " + name)
+            );
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiResponseWrapper<>("rip_enable_error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{name}/rip/disable")
+    public ResponseEntity<ApiResponseWrapper<String>> disableRip(@PathVariable String name) {
+        Interface intf = RouterInterfaces.get(name);
+        if (intf == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiResponseWrapper<>("no_such_interface", "Interface " + name + " not found"));
+        }
+
+        rip.disableOnInterface(name);
+        return ResponseEntity.ok(
+                new ApiResponseWrapper<>("rip_disabled", "RIP disabled on " + name)
+        );
+    }
+    @PostMapping("/{name}/dhcp/enable")
+    public ResponseEntity<ApiResponseWrapper<String>> enableDhcp(@PathVariable String name, @RequestParam("mode") String modeStr) {
+        Interface intf = RouterInterfaces.get(name);
+        if (intf == null) {
+            System.out.println("no such intf \n");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiResponseWrapper<>("no_such_interface", "Interface " + name + " not found"));
+        }
+
+        DhcpMode mode;
+        try {
+            mode = DhcpMode.valueOf(modeStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            System.out.println("here 1 \n");
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiResponseWrapper<>(
+                            "invalid_mode",
+                            "mode must be one of: manual, automatic, dynamic"
+                    ));
+        }
+
+        try {
+            var ifIp   = new network.IpAddres(intf.getIpAddres().toString());
+            var ifMask = new network.IpMask(intf.getIpMask().toString());
+
+            int ipInt   = ifIp.toInt();
+            int maskInt = ifMask.toInt();
+
+            int netInt  = ipInt & maskInt;
+            int bcastInt = netInt | ~maskInt;
+
+            int startInt = netInt + 10;
+            int endInt   = bcastInt - 1;
+
+            if (startInt >= endInt) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new ApiResponseWrapper<>(
+                                "pool_too_small",
+                                "Cannot build DHCP pool on " + name + " (subnet too small)"
+                        ));
+            }
+
+            var poolStart = new network.IpAddres(intToStr(startInt));
+            var poolEnd   = new network.IpAddres(intToStr(endInt));
+            var gateway   = ifIp;
+
+            dhcp.addServer(name, poolStart, poolEnd, ifMask, gateway, mode);
+
+            return ResponseEntity.ok(
+                    new ApiResponseWrapper<>(
+                            "dhcp_enabled",
+                            String.format(
+                                    "DHCP (%s) enabled on %s, pool %s - %s",
+                                    mode, name, poolStart, poolEnd
+                            )
+                    )
+            );
+
+        } catch (Exception e) {
+            System.out.println("here 3 \n");
+            e.printStackTrace();
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiResponseWrapper<>("dhcp_enable_error", e.getMessage()));
+        }
+
+    }
+    @PostMapping("/{name}/dhcp/disable")
+    public ResponseEntity<ApiResponseWrapper<String>> disableDhcp(@PathVariable String name) {
+        Interface intf = RouterInterfaces.get(name);
+        if (intf == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiResponseWrapper<>("no_such_interface", "Interface " + name + " not found"));
+        }
+
+        dhcp.removeServer(name);
+        return ResponseEntity.ok(
+                new ApiResponseWrapper<>("dhcp_disabled", "DHCP disabled on " + name)
+        );
+    }
+
+
+    private static String intToStr(int v) {
+        int b1 = (v >>> 24) & 0xFF;
+        int b2 = (v >>> 16) & 0xFF;
+        int b3 = (v >>> 8)  & 0xFF;
+        int b4 = v & 0xFF;
+        return b1 + "." + b2 + "." + b3 + "." + b4;
+    }
+
 }
+

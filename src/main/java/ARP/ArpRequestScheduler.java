@@ -27,8 +27,7 @@ public class ArpRequestScheduler {
         Thread t = new Thread(r, "arp-resolve"); t.setDaemon(true); return t;
     });
 
-    //retry
-    private final int[] DELAYS_MS = {1000, 1000, 2000}; // 3 try
+    private final int[] DELAYS_MS = {1000, 1000, 2000};
 
     public ArpRequestScheduler(IfAddressBook ifBook, TxSender tx) {
         this.ifBook = Objects.requireNonNull(ifBook);
@@ -44,7 +43,7 @@ public class ArpRequestScheduler {
 
         Job job = new Job(ifName, target);
         jobs.put(k, job);
-        sendOnce(job); // перша спроба одразу
+        sendOnce(job);
         return job.future;
     }
 

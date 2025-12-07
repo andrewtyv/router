@@ -3,9 +3,6 @@ package dto;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Обгортка для списку маршрутів (використовується у GET /api/routes).
- */
 public class RoutesDTO {
     private final List<RDto> items;
     private final int total;

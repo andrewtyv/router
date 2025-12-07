@@ -37,7 +37,6 @@ public class PacketRxLoop {
             if (pkt instanceof EthernetPacket eth) {
                 handler.onPacket(eth, ifName);
             } else {
-                // якщо драйвер раптом не повернув EthernetPacket
                 try {
                     Packet top = pkt.get(EthernetPacket.class);
                     if (top != null) handler.onPacket((EthernetPacket) top, ifName);
